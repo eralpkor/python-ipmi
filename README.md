@@ -4,8 +4,8 @@
 
 ### Usage:
 
-On Windows system you need Windows ipmitool.exe installed
-Linux systems comes with ipmitool
+-- On Windows system you need Windows ipmitool.exe installed
+-- Linux systems comes with ipmitool
 
 install requirements:
 $ pip install -r requirements.txt
