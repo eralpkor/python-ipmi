@@ -252,17 +252,17 @@ def main():
         cycle_end_time = datetime.now()
         td = (cycle_end_time - cycle_time_start).total_seconds() * 10**3
         logger.info(
-            f"The time of execution of one cycle is : {td:.03f}ms, {math.trunc(td) / 60000} minutes.")
+            f"The time of execution of one cycle is : {td:.03f}ms, {math.trunc(td / 60000)} minutes.")
 
         # Power cycle end
         test_end = (cycle_end_time - test_start_time).total_seconds() * 10**3
         logger.warning(
             f"Target cycle: {target_cycle}, cycle count {cycle_count}")
         logger.warning(
-            f"What's test end {test_end}, what's test run time {test_target_run}, target {target_cycle} cycle count {cycle_count}")
-        logger.error(f"Whats keep calling {keep_calling}")
-        # 880715
-        # Stop test when target run time reach
+            f"What's test end {math.trunc(test_end / 60000)} min., what's test run time {test_target_run / 60000} min.")
+        logger.warning(
+            f"Target cycle {target_cycle} cycle count {cycle_count}")
+        # Stop test when target run time or target cycle reach
         if test_end >= test_target_run or target_cycle <= cycle_count:
             keep_calling = False
             logger.error(f"Whats keep calling {keep_calling}")
@@ -270,22 +270,15 @@ def main():
         cycle_count += 1
 
     # End of test
+    end_time = datetime.now()
+    test_end_time = (end_time - test_start_time).total_seconds() * 10**3
+    logger.info("*******************************************************")
     logger.info(
         f"Power cycle test ended. {cycle_count - 1} cycles completed.")
+    logger.info(
+        f"Test ran {math.trunc(test_end_time)}ms, {math.trunc(test_end_time / 60000)}min.")
+    logger.info("*************** Have a nice day ***********************")
 
 
 if __name__ == "__main__":
     main()
-
-
-# ping("10.244.16.136")
-#  Ping the IP address to check if the server is still alive
-# main()
-
-# def pinging():
-#     response = subprocess.run(f"ping 10.244.16.136", shell=True)
-
-#     if response.returncode == 0:
-#         return "Graceful shutdown was successful"
-#     else:
-#         return "Server is still running"
