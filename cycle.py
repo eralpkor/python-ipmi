@@ -11,6 +11,7 @@ import urllib3
 import colorlog
 import sys
 import math
+import ping_ip
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 stdout = colorlog.StreamHandler(stream=sys.stdout)
@@ -33,7 +34,7 @@ time_tag = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
 log_file = ''
 test_log_path = 'logs/'
 test_target_run = config.hours * 3600000
-logger.warning(f"Test run time: {test_target_run}")
+logger.warning(f"Test will run {math.trunc(test_target_run / 60000)} minutes")
 test_start_time = datetime.now()
 
 # Create log file
@@ -59,6 +60,15 @@ session.auth = (user, password)
 rest_api = 'https://' + bmc_ip + '/redfish/v1/Systems/1'
 post_data = {}
 
+# Example usage of the ping_ip function:
+# ip_address = "10.244.16.0"
+# duration = 1
+
+# ping_ip.ping_ip(ip_address, duration)
+if not ping_ip.ping_ip(bmc_ip, 2):
+    logger.error(f"Cannot ping BMC ip {bmc_ip}")
+    sys.exit(1)
+
 # HTTP RedFish call to check system status
 
 
@@ -69,7 +79,7 @@ def system_status():
         return status
     except requests.exceptions.RequestException as e:
         logger.error("Cannot connect to BMC, exiting.")
-        raise SystemExit(e)
+        raise sys.exit(e)
 
 
 # Check system status before cycle test
@@ -93,11 +103,11 @@ logger.info("Event logs cleared.")
 # def ping(bmc_ip):
 #     return not os.system('ping %s -n 1' % (bmc_ip,))  # Windows
 # return not os.system('ping %s -c 1' % (bmc_ip,)) # Linux
-def ping(bmc_ip):
-    logger.info(f"Pinging {bmc_ip}")
-    res = subprocess.run(["ping", "-n", "1", str(bmc_ip)])  # Windows
-    # res = subprocess.run(["ping", "-c", "1", str(bmc_ip)]) # Linux
-    return res.returncode == 0
+# def ping(bmc_ip):
+#     logger.info(f"Pinging {bmc_ip}")
+#     res = subprocess.run(["ping", "-n", "1", str(bmc_ip)])  # Windows
+#     # res = subprocess.run(["ping", "-c", "1", str(bmc_ip)]) # Linux
+#     return res.returncode == 0
 
 
 ipmiCommand = [
@@ -165,7 +175,7 @@ def main():
                 if wait_count > 20:
                     logger.critical(
                         f"Waited 20 minutes System state did not change. Exiting test {system_status()}")
-                    SystemExit(1)
+                    sys.exit(1)
 
                 logger.info("Sleeping 20 seconds to detect power state.")
                 time.sleep(20)
@@ -195,7 +205,7 @@ def main():
                     if wait_count > 30:
                         logger.critical(
                             f"Waited 10 minutes but System did not power off, test exited. Power status {status}")
-                        SystemExit(1)
+                        sys.exit(1)
 
                     logger.info(
                         "Sleep 20 seconds to check if system powered off.")
@@ -222,7 +232,7 @@ def main():
                     if wait_count > 30:
                         logger.critical(
                             f"Waited 10 minutes, but system did not power on {status}")
-                        SystemExit(1)
+                        sys.exit(1)
 
                     logger.info(
                         "Sleep 20 seconds to check if system powered on.")
