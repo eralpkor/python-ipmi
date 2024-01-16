@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# @Eralp
 from codetiming import Timer
 import logging
 import requests
@@ -6,13 +7,29 @@ import time
 from datetime import datetime
 import subprocess
 import os
-import config
+# import config
 import urllib3
 import colorlog
 import sys
 import math
 import ping_ip
+import argparse
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+parser = argparse.ArgumentParser(description="Power cycle script", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+# parser.add_argument("-h", "--help", help="show this help message")
+parser.add_argument("-u", "--username", help="BMC user name", type=str, required=True)
+parser.add_argument("-p", "--password", help="BMC password", type=str, required=True)
+parser.add_argument("-i", "--ipaddress", help="BMC ip address", type=str, required=True)
+parser.add_argument("-c", "--cipher", help="BMC security cipher", type=str, required=True)
+parser.add_argument("-t", "--timer", help="Test running time in hours", type=int, required=True)
+parser.add_argument("-l", "--log", help="Log file name", type=str, required=True)
+parser.add_argument("-m", "--target", help="How many cycles", default=200 ,type=int)
+config = parser.parse_args()
+# config = vars(args)
+# parser.parse_args()
+print(f"ip address {config.ipaddress}")
+# Setup logger
 logger = logging.getLogger(__name__)
 stdout = colorlog.StreamHandler(stream=sys.stdout)
 fmt = colorlog.ColoredFormatter(
@@ -24,17 +41,28 @@ logger.setLevel(logging.INFO)
 # logger.setLevel(logging.DEBUG) # Logger for debug script
 
 # variables
-bmc_ip = config.bmc_ip
-user = config.bmc_user
-password = config.bmc_pw
-target_cycle = config.target_cycle
+bmc_ip = config.ipaddress
+user = config.username
+password = config.password
+target_cycle = config.target
+cipher = config.cipher
+log = config.log
+# Get ipmi commands
+# ipmiCommand = config.ipmiCommand
+# Cycle raw commands
+ipmiCommand = [
+    ["0x00", "0x02", "0x00", "off"],
+    ["0x00", "0x02", "0x01", "on"],
+    ["0x00", "0x02", "0x02", "cycle"],
+    ["0x00", "0x02", "0x03", "reset"]]
+command_length = len(ipmiCommand)
 folder_path = ''
 filename = ''
 time_tag = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
 log_file = ''
 test_log_path = 'logs/'
-test_target_run = config.hours * 3600000
-logger.warning(f"Test will run {math.trunc(test_target_run / 60000)} minutes")
+test_target_run = config.timer * 3600000
+logger.info(f"Test will run {math.trunc(test_target_run / 60000)} minutes")
 test_start_time = datetime.now()
 
 # Create log file
@@ -44,7 +72,7 @@ try:
 except OSError as e:
     if e.errno != errno.EEXIST:
         raise
-log_file = folder_path + '/RunningLog_' + bmc_ip + '.txt'
+log_file = folder_path + '/' + log + "_" + bmc_ip + '.txt'
 
 logging.basicConfig(
     filename=log_file, format="%(levelname)s | %(asctime)s | %(message)s", level=logging.DEBUG)
@@ -60,23 +88,63 @@ session.auth = (user, password)
 rest_api = 'https://' + bmc_ip + '/redfish/v1/Systems/1'
 post_data = {}
 
-# Example usage of the ping_ip function:
-# ip_address = "10.244.16.0"
-# duration = 1
-
 # ping_ip.ping_ip(ip_address, duration)
 if not ping_ip.ping_ip(bmc_ip, 2):
     logger.error(f"Cannot ping BMC ip {bmc_ip}")
     sys.exit(1)
 
+if ping_ip.ping_ip(bmc_ip, 2):
+    logger.info(f"BMC is pingable, countinue with test.")
+
+# Windows only
+# ipmi_path = 'C:\\python-ipmi\\ipmi\\'
+# ipmi_cmd = 'ipmitool.exe'
+r = ''
+# ipmitool
+def ipmi_cycle(ip_address, r, a, b, c):
+    try:
+        p = subprocess.run(
+            f"ipmitool -I lanplus -C {cipher} -H {ip_address} -U {user} -P {password} {r} {a} {b} {c}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if p.returncode == 0:
+            logger.info(f"System power status: {p.stdout}")
+            time.sleep(10)
+            logger.info(f"ipmi raw command sent {a}, {b}, {c}")
+        # print(f"check return code {p.check_returncode()}")
+
+        if p.returncode != 0:
+            logger.critical(f"Exiting script, check your ipmi settings/status {p.stderr}")
+            sys.exit(1)
+
+    except Exception as e:
+        # Log the error
+        logger.critical(f"Error: {e}")
+        sys.exit(e)
+
+# Check if IPMI over LAN is active
+ipmi_cycle(bmc_ip, "", "power", "status", "")
+
 # HTTP RedFish call to check system status
-
-
 def system_status():
     try:
         r = session.get(rest_api, verify=False)
+        r.raise_for_status()
         status = r.json()["Oem"]["Lenovo"]["SystemStatus"]
         return status
+    except requests.exceptions.HTTPError as errh:
+        logger.error("HTTP Error")
+        logger.error(errh.args[0])
+        raise sys.exit(errh)
+    except requests.exceptions.ReadTimeout as errrt:
+        logger.error("Time out")
+        raise sys.exit(errrt)
+    except requests.exceptions.ConnectionError as conerr:
+        logger.error("Connection error")
+        raise sys.exit(conerr)
+        # if r.status_code == "401":
+        #     logger.error(f"User or password is incorrect. You entered: {user}, {password}")
+        #     sys.exit(1)
+        # else:
+        
     except requests.exceptions.RequestException as e:
         logger.error("Cannot connect to BMC, exiting.")
         raise sys.exit(e)
@@ -98,45 +166,6 @@ logger.info("SEL logs cleared.")
 e = session.post(rest_api + '/LogServices/PlatformLog/Actions/LogService.ClearLog',
                  json=post_data, verify=False)
 logger.info("Event logs cleared.")
-
-
-# def ping(bmc_ip):
-#     return not os.system('ping %s -n 1' % (bmc_ip,))  # Windows
-# return not os.system('ping %s -c 1' % (bmc_ip,)) # Linux
-# def ping(bmc_ip):
-#     logger.info(f"Pinging {bmc_ip}")
-#     res = subprocess.run(["ping", "-n", "1", str(bmc_ip)])  # Windows
-#     # res = subprocess.run(["ping", "-c", "1", str(bmc_ip)]) # Linux
-#     return res.returncode == 0
-
-
-ipmiCommand = [
-    ["0x00", "0x02", "0x00"],
-    ["0x00", "0x02", "0x01"],
-    ["0x00", "0x02", "0x02"],
-    ["0x00", "0x02", "0x03"]]
-
-ipmi_power = ["off", "on", "cycle", "reset"]
-
-# Windows only
-ipmi_path = 'C:\\python-ipmi\\ipmi\\'
-ipmi_cmd = 'ipmitool.exe'
-command_length = len(ipmiCommand)
-
-
-# ipmitool
-def ipmi_cycle(ip_address, a, b, c):
-    try:
-        subprocess.run(
-            f"{ipmi_path}{ipmi_cmd} -I lanplus -C 17 -H {ip_address} -U {user} -P {password} raw {a} {b} {c}", shell=True, stdout=None, stderr=None)
-        logger.info(stdout)
-        time.sleep(10)
-        logger.info(f"ipmi raw command sent {a}, {b}, {c}")
-
-    except Exception as e:
-        # Log the error
-        logger.critical(f"Error: {e}")
-        return "An error occurred"
 
 
 def main():
@@ -172,9 +201,9 @@ def main():
             # Wait until next ipmi command
             while is_system_busy:
                 logger.warning(f"Wait count {wait_count}")
-                if wait_count > 20:
+                if wait_count > 30:
                     logger.critical(
-                        f"Waited 20 minutes System state did not change. Exiting test {system_status()}")
+                        f"Waited 30 minutes System state did not change. Exiting test {system_status()}")
                     sys.exit(1)
 
                 logger.info("Sleeping 20 seconds to detect power state.")
@@ -185,14 +214,14 @@ def main():
                 if status == "OSBooted" or \
                         status == "SystemPowerOff_StateUnknown":
                     is_system_busy = False
-                    logger.warning(f"Is system busy booting {is_system_busy}")
+                    logger.info(f"Is system busy booting {is_system_busy}")
                 wait_count += 1
 
             logger.info(f"Sleep 20 Seconds before raw command {command}")
             time.sleep(20)
 
-            ipmi_cycle(bmc_ip, command[0], command[1], command[2])
-            logger.warning(f"ipmi power {ipmi_power[index]} command sent.")
+            ipmi_cycle(bmc_ip, "raw", command[0], command[1], command[2])
+            logger.info(f"ipmi power {ipmiCommand[index][3]} command sent.")
             is_system_busy = True
             logger.info(f"is system busy {is_system_busy}")
 
@@ -231,7 +260,7 @@ def main():
                     status = system_status()
                     if wait_count > 30:
                         logger.critical(
-                            f"Waited 10 minutes, but system did not power on {status}")
+                            f"Waited 30 minutes, but system did not power on {status}")
                         sys.exit(1)
 
                     logger.info(
@@ -243,6 +272,8 @@ def main():
                     if status == "OSBooted":
                         os_booted = True
                         logger.info(f"OS booted {os_booted}")
+                        logger.info(f"Sleeping 30 seconds to do next ipmi command")
+                        time.sleep(30)
                     else:
                         os_booted = False
                         logger.info(f"OS booted {os_booted}")
@@ -255,7 +286,7 @@ def main():
 
         logger.info("*******************************************************")
         logger.info(
-            f"************** Power Cycle Count {cycle_count} ***************")
+            f"************** Power Cycle Count {cycle_count} on {bmc_ip} ***************")
         logger.info("*******************************************************")
 
         # Calculate each cycle duration
@@ -266,16 +297,15 @@ def main():
 
         # Power cycle end
         test_end = (cycle_end_time - test_start_time).total_seconds() * 10**3
-        logger.warning(
+        logger.info(
             f"Target cycle: {target_cycle}, cycle count {cycle_count}")
-        logger.warning(
-            f"What's test end {math.trunc(test_end / 60000)} min., what's test run time {test_target_run / 60000} min.")
-        logger.warning(
-            f"Target cycle {target_cycle} cycle count {cycle_count}")
+       
         # Stop test when target run time or target cycle reach
         if test_end >= test_target_run or target_cycle <= cycle_count:
             keep_calling = False
-            logger.error(f"Whats keep calling {keep_calling}")
+            logger.info(f"***************************************************\n\
+                        ******* Test ENDED ********\n\
+                        ****************************************************")
 
         cycle_count += 1
 
