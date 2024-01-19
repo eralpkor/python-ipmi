@@ -1,5 +1,7 @@
 import subprocess
 
+# ip_address = "10.244.16.77"
+# duration = 2
 
 def ping_ip(ip_address: str, duration: int) -> bool:
     """
@@ -67,7 +69,7 @@ def is_valid_ip(ip_address: str) -> bool:
 # Example usage of the ping_ip function:
 # ip_address = "10.244.16.136"
 # duration = 1
-
+# print(ping_ip(ip_address, duration))
 # try:
 #     result = ping_ip(ip_address, duration)
 #     if result:
