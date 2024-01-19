@@ -17,7 +17,8 @@ You need to put timer/duration in hours if you need to run it so many hours, you
 
 ## Example
 
-python cycle.py [Options] [Arguments]
+-- python cycle.py [Options]
+
 `python cycle.py -u USERID -p Password -i 192.168.0.123 -c 17 -t 12 -m 200 -l filename`
 
 ```
