@@ -5,7 +5,7 @@
 ### Usage:
 
 -- On Windows system you need Windows ipmitool.exe installed </br>
--- Linux systems comes with ipmitool
+-- Linux systems comes with ipmitool or install it from depository
 
 install requirements:
 $ pip install -r requirements.txt
