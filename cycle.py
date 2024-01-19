@@ -1,6 +1,5 @@
 #!/usr/bin/python
 # @Eralp
-from codetiming import Timer
 import logging
 import requests
 import time
@@ -96,6 +95,36 @@ if not ping_ip.ping_ip(bmc_ip, 2):
 if ping_ip.ping_ip(bmc_ip, 2):
     logger.info(f"BMC is pingable, countinue with test.")
 
+# HTTP RedFish call to check system status
+def system_status():
+    try:
+        r = session.get(rest_api, verify=False)
+        r.raise_for_status()
+        status = r.json()["Oem"]["Lenovo"]["SystemStatus"]
+        return status
+    except requests.exceptions.HTTPError as errh:
+        logger.error("HTTP Error, check username/password")
+        logger.error(errh.args[0])
+        raise sys.exit(errh)
+    except requests.exceptions.ReadTimeout as errrt:
+        logger.error("Time out")
+        raise sys.exit(errrt)
+    except requests.exceptions.ConnectionError as conerr:
+        logger.error("Connection error")
+        raise sys.exit(conerr)
+        # if r.status_code == "401":
+        #     logger.error(f"User or password is incorrect. You entered: {user}, {password}")
+        #     sys.exit(1)
+        # else:
+        
+    except requests.exceptions.RequestException as e:
+        logger.error("Cannot connect to BMC, exiting.")
+        raise sys.exit(e)
+
+# Check system status before cycle test
+status = system_status()
+logger.info(f"System status {status}")
+
 # Windows only
 # ipmi_path = 'C:\\python-ipmi\\ipmi\\'
 # ipmi_cmd = 'ipmitool.exe'
@@ -123,36 +152,6 @@ def ipmi_cycle(ip_address, r, a, b, c):
 # Check if IPMI over LAN is active
 ipmi_cycle(bmc_ip, "", "power", "status", "")
 
-# HTTP RedFish call to check system status
-def system_status():
-    try:
-        r = session.get(rest_api, verify=False)
-        r.raise_for_status()
-        status = r.json()["Oem"]["Lenovo"]["SystemStatus"]
-        return status
-    except requests.exceptions.HTTPError as errh:
-        logger.error("HTTP Error")
-        logger.error(errh.args[0])
-        raise sys.exit(errh)
-    except requests.exceptions.ReadTimeout as errrt:
-        logger.error("Time out")
-        raise sys.exit(errrt)
-    except requests.exceptions.ConnectionError as conerr:
-        logger.error("Connection error")
-        raise sys.exit(conerr)
-        # if r.status_code == "401":
-        #     logger.error(f"User or password is incorrect. You entered: {user}, {password}")
-        #     sys.exit(1)
-        # else:
-        
-    except requests.exceptions.RequestException as e:
-        logger.error("Cannot connect to BMC, exiting.")
-        raise sys.exit(e)
-
-
-# Check system status before cycle test
-status = system_status()
-logger.info(f"System status {status}")
 # Clear logs before running the script
 # Clear Audit logs
 a = session.post(rest_api +
@@ -203,7 +202,8 @@ def main():
                 logger.warning(f"Wait count {wait_count}")
                 if wait_count > 30:
                     logger.critical(
-                        f"Waited 30 minutes System state did not change. Exiting test {system_status()}")
+                        f"Waited 30 minutes System state did not change, exiting test.\
+                             System status: {system_status()}")
                     sys.exit(1)
 
                 logger.info("Sleeping 20 seconds to detect power state.")
@@ -260,7 +260,7 @@ def main():
                     status = system_status()
                     if wait_count > 30:
                         logger.critical(
-                            f"Waited 30 minutes, but system did not power on {status}")
+                            f"Waited 30 minutes, but system did not power on. System status: {status}")
                         sys.exit(1)
 
                     logger.info(
