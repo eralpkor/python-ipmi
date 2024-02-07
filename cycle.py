@@ -12,8 +12,10 @@ import colorlog
 import sys
 import math
 import ping_ip
+# from pythonping import ping
 import argparse
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# sudo setcap cap_net_raw+ep $(readlink -f $(which python))
 
 parser = argparse.ArgumentParser(description="Power cycle script", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 # parser.add_argument("-h", "--help", help="show this help message")
@@ -24,6 +26,7 @@ parser.add_argument("-c", "--cipher", help="BMC security cipher", type=str, requ
 parser.add_argument("-t", "--timer", help="Test running time in hours", type=int, required=True)
 parser.add_argument("-l", "--log", help="Log file name", type=str, required=True)
 parser.add_argument("-m", "--target", help="How many cycles", default=200 ,type=int)
+# parser.add_argument("a", "--accycle", help="If system going to be AC cycled", default="no",)
 config = parser.parse_args()
 # config = vars(args)
 # parser.parse_args()
@@ -46,6 +49,11 @@ password = config.password
 target_cycle = config.target
 cipher = config.cipher
 log = config.log
+# ac = config.accycle.lower()
+# if ac == "no":
+#     ac = False
+# if ac == "yes":
+#     ac = True
 # Get ipmi commands
 # ipmiCommand = config.ipmiCommand
 # Cycle raw commands
@@ -145,7 +153,6 @@ def ipmi_cycle(ip_address, r, a, b, c):
             sys.exit(1)
 
     except Exception as e:
-        # Log the error
         logger.critical(f"Error: {e}")
         sys.exit(e)
 
@@ -153,19 +160,66 @@ def ipmi_cycle(ip_address, r, a, b, c):
 ipmi_cycle(bmc_ip, "", "power", "status", "")
 
 # Clear logs before running the script
-# Clear Audit logs
-a = session.post(rest_api +
-                 '/LogServices/AuditLog/Actions/LogService.ClearLog', json=post_data, verify=False)
-logger.info("Audit logs cleared.")
-# Clear SEL logs
-s = session.post(rest_api + '/LogServices/SEL/Actions/LogService.ClearLog',
-                 json=post_data, verify=False)
-logger.info("SEL logs cleared.")
-# Clear Event logs
-e = session.post(rest_api + '/LogServices/PlatformLog/Actions/LogService.ClearLog',
-                 json=post_data, verify=False)
-logger.info("Event logs cleared.")
-
+def clear_system_logs(rest_api, session):
+    try:
+        # Clear Audit logs
+        a = session.post(rest_api +
+                        '/LogServices/AuditLog/Actions/LogService.ClearLog', json=post_data, verify=False)
+        logger.info("Audit logs cleared.")
+        a.raise_for_status()
+        # status = a.json()["Oem"]["Lenovo"]["SystemStatus"]
+        # return status
+    except requests.exceptions.HTTPError as errh:
+        logger.error("HTTP Error, check username/password")
+        logger.error(errh.args[0])
+        raise sys.exit(errh)
+    except requests.exceptions.ReadTimeout as errrt:
+        logger.error("Time out")
+        raise sys.exit(errrt)
+    except requests.exceptions.ConnectionError as conerr:
+        logger.error("Connection error")
+        raise sys.exit(conerr)
+    except requests.exceptions.RequestException as e:
+        logger.error("Cannot connect to BMC, exiting.")
+        raise sys.exit(e)
+    
+    try:
+        # Clear SEL logs
+        s = session.post(rest_api + '/LogServices/SEL/Actions/LogService.ClearLog',
+                        json=post_data, verify=False)
+        logger.info("SEL logs cleared.")
+    except requests.exceptions.HTTPError as errh:
+        logger.error("HTTP Error, check username/password")
+        logger.error(errh.args[0])
+        raise sys.exit(errh)
+    except requests.exceptions.ReadTimeout as errrt:
+        logger.error("Time out")
+        raise sys.exit(errrt)
+    except requests.exceptions.ConnectionError as conerr:
+        logger.error("Connection error")
+        raise sys.exit(conerr)
+    except requests.exceptions.RequestException as e:
+        logger.error("Cannot connect to BMC, exiting.")
+        raise sys.exit(e)
+    
+    try:
+        # Clear Event logs
+        e = session.post(rest_api + '/LogServices/PlatformLog/Actions/LogService.ClearLog',
+                        json=post_data, verify=False)
+        logger.info("Event logs cleared.")
+    except requests.exceptions.HTTPError as errh:
+        logger.error("HTTP Error, check username/password")
+        logger.error(errh.args[0])
+        raise sys.exit(errh)
+    except requests.exceptions.ReadTimeout as errrt:
+        logger.error("Time out")
+        raise sys.exit(errrt)
+    except requests.exceptions.ConnectionError as conerr:
+        logger.error("Connection error")
+        raise sys.exit(conerr)
+    except requests.exceptions.RequestException as e:
+        logger.error("Cannot connect to BMC, exiting.")
+        raise sys.exit(e)
 
 def main():
     is_system_busy = False
@@ -174,12 +228,14 @@ def main():
     keep_calling = True
     command = []
     cycle_count = 1
-    logger.info(f"************* Cycle test start {datetime.now()} ***********")
+    ac_cycled = False
+    logger.info(f"*************\n Cycle test start {datetime.now()} \n***********")
+    clear_system_logs(rest_api, session)
 
     while keep_calling:
         is_powered_off = False
         status = system_status()
-        logger.info(f"********** Power Cycle {cycle_count} start. ***********")
+        logger.info(f"*****************\n********** Power Cycle {cycle_count} start. ***********\n*****************")
         if status == "SystemPowerOff_StateUnknown":
             is_powered_off = True
         logger.info(f"is powered off {is_powered_off}")
@@ -189,6 +245,8 @@ def main():
             command = raw  # type: ignore
             status = system_status()
             logger.info(f"Status {status}")
+            # AC cycle stuff
+
             if status == "SystemOn_StartingUEFI" or \
                     status == "SystemRunningInUEFI" or \
                     status == "BootingOSOrInUndetectedOS":
@@ -217,8 +275,8 @@ def main():
                     logger.info(f"Is system busy booting {is_system_busy}")
                 wait_count += 1
 
-            logger.info(f"Sleep 20 Seconds before raw command {command}")
-            time.sleep(20)
+            logger.info(f"Sleep 60 Seconds before raw command {command}")
+            time.sleep(60)
 
             ipmi_cycle(bmc_ip, "raw", command[0], command[1], command[2])
             logger.info(f"ipmi power {ipmiCommand[index][3]} command sent.")
@@ -294,6 +352,12 @@ def main():
         td = (cycle_end_time - cycle_time_start).total_seconds() * 10**3
         logger.info(
             f"The time of execution of one cycle is : {td:.03f}ms, {math.trunc(td / 60000)} minutes.")
+
+        so_far_run = datetime.now()
+        so_far_end_time = (so_far_run - test_start_time).total_seconds() * 10**3
+        logger.info(f"**************\n  Test been running for\
+                    2223 {math.trunc(so_far_end_time / 60000)} min.\n\
+                    ***************")
 
         # Power cycle end
         test_end = (cycle_end_time - test_start_time).total_seconds() * 10**3
