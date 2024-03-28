@@ -25,8 +25,9 @@ parser.add_argument("-i", "--ipaddress", help="BMC ip address", type=str, requir
 parser.add_argument("-c", "--cipher", help="BMC security cipher", type=str, required=True)
 parser.add_argument("-t", "--timer", help="Test running time in hours", type=int, required=True)
 parser.add_argument("-l", "--log", help="Log file name", type=str, required=True)
-parser.add_argument("-m", "--target", help="How many cycles", default=200 ,type=int)
+parser.add_argument("-m", "--target", help="How many cycles", default=1000 ,type=int)
 # parser.add_argument("a", "--accycle", help="If system going to be AC cycled", default="no",)
+# parser.add_argument("v", "--ipv6", help="IPv6 if any", type=str, required=False)
 config = parser.parse_args()
 # config = vars(args)
 # parser.parse_args()
@@ -49,6 +50,10 @@ password = config.password
 target_cycle = config.target
 cipher = config.cipher
 log = config.log
+# ipv6_cycle = False
+# if config.ipv6:
+#     ipv6_cycle = True
+# print(ipv6_cycle)
 # ac = config.accycle.lower()
 # if ac == "no":
 #     ac = False
@@ -101,7 +106,9 @@ if not ping_ip.ping_ip(bmc_ip, 2):
     sys.exit(1)
 
 if ping_ip.ping_ip(bmc_ip, 2):
-    logger.info(f"BMC is pingable, countinue with test.")
+    logger.info(f"Verifying XCC IP {bmc_ip} is pingable...")
+    time.sleep(3)
+    logger.info(f"XCC ping successful, moving on.")
 
 # HTTP RedFish call to check system status
 def system_status():
@@ -131,7 +138,7 @@ def system_status():
 
 # Check system status before cycle test
 status = system_status()
-logger.info(f"System status {status}")
+logger.info(f"System status {status} on {rest_api}")
 
 # Windows only
 # ipmi_path = 'C:\\python-ipmi\\ipmi\\'
@@ -158,6 +165,7 @@ def ipmi_cycle(ip_address, r, a, b, c):
 
 # Check if IPMI over LAN is active
 ipmi_cycle(bmc_ip, "", "power", "status", "")
+# Critical Interrupt
 
 # Clear logs before running the script
 def clear_system_logs(rest_api, session):
@@ -187,7 +195,7 @@ def clear_system_logs(rest_api, session):
         # Clear SEL logs
         s = session.post(rest_api + '/LogServices/SEL/Actions/LogService.ClearLog',
                         json=post_data, verify=False)
-        logger.info("SEL logs cleared.")
+        logger.info(f"SEL logs cleared on {rest_api}")
     except requests.exceptions.HTTPError as errh:
         logger.error("HTTP Error, check username/password")
         logger.error(errh.args[0])
@@ -231,6 +239,7 @@ def main():
     ac_cycled = False
     logger.info(f"*************\n Cycle test start {datetime.now()} \n***********")
     clear_system_logs(rest_api, session)
+    time.sleep(5)
 
     while keep_calling:
         is_powered_off = False
@@ -258,7 +267,7 @@ def main():
             # Wait until next ipmi command
             while is_system_busy:
                 logger.warning(f"Wait count {wait_count}")
-                if wait_count > 30:
+                if wait_count > 90:
                     logger.critical(
                         f"Waited 30 minutes System state did not change, exiting test.\
                              System status: {system_status()}")
@@ -289,9 +298,9 @@ def main():
                 logger.info(f"Shut down wait count {wait_count}")
                 while not is_powered_off:
                     status = system_status()
-                    if wait_count > 30:
+                    if wait_count > 90:
                         logger.critical(
-                            f"Waited 10 minutes but System did not power off, test exited. Power status {status}")
+                            f"Waited 30 minutes but System did not power off, test exited. Power status {status}")
                         sys.exit(1)
 
                     logger.info(
@@ -316,7 +325,7 @@ def main():
                 logger.info(f"Power on wait count {wait_count}")
                 while not os_booted:
                     status = system_status()
-                    if wait_count > 30:
+                    if wait_count > 90:
                         logger.critical(
                             f"Waited 30 minutes, but system did not power on. System status: {status}")
                         sys.exit(1)
@@ -326,7 +335,7 @@ def main():
                     time.sleep(20)
                     status = system_status()
                     logger.info(f"System status {status}")
-
+                    logger.info(f"Wait count {wait_count}")
                     if status == "OSBooted":
                         os_booted = True
                         logger.info(f"OS booted {os_booted}")
@@ -355,9 +364,10 @@ def main():
 
         so_far_run = datetime.now()
         so_far_end_time = (so_far_run - test_start_time).total_seconds() * 10**3
-        logger.info(f"**************\n  Test been running for\
-                    2223 {math.trunc(so_far_end_time / 60000)} min.\n\
-                    ***************")
+        logger.info(f"\n  Test run time\
+                    ************** {math.trunc(so_far_end_time / 60000)} min.\n\
+                    {math.trunc(so_far_end_time / 60000) / 60} hr/s. \
+                        ***************")
 
         # Power cycle end
         test_end = (cycle_end_time - test_start_time).total_seconds() * 10**3
