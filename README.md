@@ -19,15 +19,17 @@ You need to put timer/duration in hours if you need to run it so many hours, you
 
 -- python cycle.py [Options]
 
-`python cycle.py -u USERID -p Password -i 192.168.0.123 -c 17 -t 12 -m 200 -l filename`
+`python cycle.py -u USERID -p Password -i 192.168.0.123 -c 17 -t 12 -m 200 -l filename -w True `
 
 ```
 "h" or "--help" to see menu
-"-u" or "--username", "BMC user name"
-"-p" or "--password", "BMC password"
-"-i" or "--ipaddress", "BMC ip address"
-"-c" or "--cipher", "BMC security cipher"
-"-l" or "--log", "Log file name"
+"-u" or "--username", "BMC user name" required
+"-p" or "--password", "BMC password" required
+"-i" or "--ipaddress", "BMC ip address" required
+"-c" or "--cipher", "BMC security cipher" required
+"-l" or "--log", "Log file name" required
 "-t" or "--timer", "Test running time in hours"
-"-m" or "--target", "How many cycles to run, default is 200"
+"-m" or "--target", "How many cycles to run, default is 200", not required
+"-w", "--clearlogs", "Clear all system logs" default=False, required
+"-a", "--accycle", help="If system going to be AC cycled", default is False, not required
 ```

@@ -26,11 +26,10 @@ parser.add_argument("-c", "--cipher", help="BMC security cipher", type=str, requ
 parser.add_argument("-t", "--timer", help="Test running time in hours", type=int, required=True)
 parser.add_argument("-l", "--log", help="Log file name", type=str, required=True)
 parser.add_argument("-m", "--target", help="How many cycles", default=1000 ,type=int)
-# parser.add_argument("a", "--accycle", help="If system going to be AC cycled", default="no",)
+parser.add_argument("-w", "--clearlogs", help="Clear all system logs", default=False, required=True)
+parser.add_argument("-a", "--accycle", help="If system going to be AC cycled", default=False, required=False)
 # parser.add_argument("v", "--ipv6", help="IPv6 if any", type=str, required=False)
 config = parser.parse_args()
-# config = vars(args)
-# parser.parse_args()
 print(f"ip address {config.ipaddress}")
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -84,7 +83,7 @@ try:
 except OSError as e:
     if e.errno != errno.EEXIST:
         raise
-log_file = folder_path + '/' + log + "_" + bmc_ip + '.txt'
+log_file = folder_path + '/' + log + "_" + bmc_ip + '.log'
 
 logging.basicConfig(
     filename=log_file, format="%(levelname)s | %(asctime)s | %(message)s", level=logging.DEBUG)
@@ -238,7 +237,12 @@ def main():
     cycle_count = 1
     ac_cycled = False
     logger.info(f"*************\n Cycle test start {datetime.now()} \n***********")
-    clear_system_logs(rest_api, session)
+    # Clear all sytem logs
+    print(f"Clear logs {config.clearlogs}")
+    if config.clearlogs == True:
+        clear_system_logs(rest_api, session)
+
+    print("Sleeping 5 seconds.")
     time.sleep(5)
 
     while keep_calling:
@@ -253,7 +257,7 @@ def main():
             logger.info(f"is system busy {is_system_busy}")
             command = raw  # type: ignore
             status = system_status()
-            logger.info(f"Status {status}")
+            logger.info(f"Redfish system status {status}")
             # AC cycle stuff
 
             if status == "SystemOn_StartingUEFI" or \
@@ -270,13 +274,13 @@ def main():
                 if wait_count > 90:
                     logger.critical(
                         f"Waited 30 minutes System state did not change, exiting test.\
-                             System status: {system_status()}")
+                             Redfish system status: {system_status()}")
                     sys.exit(1)
 
                 logger.info("Sleeping 20 seconds to detect power state.")
                 time.sleep(20)
                 status = system_status()
-                logger.info(f"System status: {status}")
+                logger.info(f"Redfish system status {status}")
                 # Check redFish state, if not OS booted or powered off keep checking
                 if status == "OSBooted" or \
                         status == "SystemPowerOff_StateUnknown":
@@ -307,7 +311,7 @@ def main():
                         "Sleep 20 seconds to check if system powered off.")
                     time.sleep(20)
                     status = system_status()
-                    logger.info(f"System status {status}")
+                    logger.info(f"Redfish system status {status}")
 
                     if status == "SystemPowerOff_StateUnknown":
                         is_powered_off = True
@@ -334,7 +338,7 @@ def main():
                         "Sleep 20 seconds to check if system powered on.")
                     time.sleep(20)
                     status = system_status()
-                    logger.info(f"System status {status}")
+                    logger.info(f"Redfish system status {status}")
                     logger.info(f"Wait count {wait_count}")
                     if status == "OSBooted":
                         os_booted = True
@@ -372,7 +376,7 @@ def main():
         # Power cycle end
         test_end = (cycle_end_time - test_start_time).total_seconds() * 10**3
         logger.info(
-            f"Target cycle: {target_cycle}, cycle count {cycle_count}")
+            f"Target cycle, default 1000: {target_cycle}, cycle count {cycle_count}")
        
         # Stop test when target run time or target cycle reach
         if test_end >= test_target_run or target_cycle <= cycle_count:
